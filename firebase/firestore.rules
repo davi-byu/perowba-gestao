@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function sameCompany(companyId) {
+      return signedIn() && userDoc().data.empresaId == companyId;
+    }
+
+    function hasRole(roles) {
+      return signedIn() && userDoc().data.funcao in roles;
+    }
+
+    match /empresas/{empresaId} {
+      allow read: if sameCompany(empresaId);
+      allow write: if sameCompany(empresaId) && hasRole(['admin']);
+
+      match /produtos/{produtoId} {
+        allow read: if sameCompany(empresaId);
+        allow create, update: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'estoquista']);
+        allow delete: if false;
+      }
+
+      match /clientes/{clienteId} {
+        allow read, create, update: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'vendedor']);
+        allow delete: if false;
+      }
+
+      match /fornecedores/{fornecedorId} {
+        allow read: if sameCompany(empresaId);
+        allow create, update: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'estoquista']);
+        allow delete: if false;
+      }
+
+      match /vendas/{vendaId} {
+        allow read: if sameCompany(empresaId);
+        allow create: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'vendedor']);
+        allow update: if sameCompany(empresaId) && hasRole(['admin', 'gerente']);
+        allow delete: if false;
+      }
+
+      match /movimentacoesEstoque/{movimentoId} {
+        allow read: if sameCompany(empresaId);
+        allow create: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'estoquista']);
+        allow update, delete: if false;
+      }
+
+      match /financeiro/{lancamentoId} {
+        allow read, create, update: if sameCompany(empresaId) && hasRole(['admin', 'gerente', 'financeiro']);
+        allow delete: if false;
+      }
+
+      match /auditoria/{eventoId} {
+        allow read: if sameCompany(empresaId) && hasRole(['admin']);
+        allow create: if sameCompany(empresaId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /usuarios/{usuarioId} {
+      allow read: if signedIn() && (request.auth.uid == usuarioId || hasRole(['admin']));
+      allow write: if signedIn() && hasRole(['admin']);
+    }
+  }
+}

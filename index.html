@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sistema profissional de gestão de vendas, estoque, caixa e relatórios da Perowba Sports.">
+  <meta name="author" content="Davi Victor">
+  <meta name="theme-color" content="#0f172a">
+  <title>Perowba Gestão</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="estilos/app.css">
+  <script src="scripts/app.js" defer></script>
+</head>
+<body>
+  <section id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="brand brand-login">
+        <span class="brand-mark">PS</span>
+        <div>
+          <strong>Perowba Gestão</strong>
+          <small>Vendas e estoque</small>
+        </div>
+      </div>
+
+      <h1>Acesse o sistema</h1>
+      <p class="muted">Protótipo funcional. Os dados ficam salvos neste navegador.</p>
+
+      <form id="login-form" class="form-grid one-column">
+        <label>
+          E-mail
+          <input id="login-email" type="email" value="admin@perowba.com" required autocomplete="username">
+        </label>
+        <label>
+          Senha
+          <input id="login-password" type="password" value="123456" required autocomplete="current-password">
+        </label>
+        <button class="btn primary full" type="submit">Entrar</button>
+      </form>
+
+      <div class="demo-box">
+        <strong>Acesso de demonstração</strong>
+        <span>Administrador: admin@perowba.com / 123456</span>
+        <span>Vendedor: vendedor@perowba.com / 123456</span>
+      </div>
+      <p id="login-error" class="form-error" role="alert"></p>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">PS</span>
+        <div>
+          <strong id="brand-company">Perowba Sports</strong>
+          <small>Gestão profissional</small>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Menu principal">
+        <button data-route="dashboard" class="nav-item active"><span>▦</span> Painel</button>
+        <button data-route="pdv" class="nav-item"><span>🛒</span> PDV / Vendas</button>
+        <button data-route="produtos" class="nav-item"><span>▣</span> Produtos</button>
+        <button data-route="estoque" class="nav-item"><span>↕</span> Estoque</button>
+        <button data-route="clientes" class="nav-item"><span>♙</span> Clientes</button>
+        <button data-route="fornecedores" class="nav-item"><span>⌂</span> Fornecedores</button>
+        <button data-route="compras" class="nav-item"><span>🧾</span> Compras</button>
+        <button data-route="caixa" class="nav-item"><span>▤</span> Caixa</button>
+        <button data-route="financeiro" class="nav-item"><span>R$</span> Financeiro</button>
+        <button data-route="relatorios" class="nav-item"><span>📊</span> Relatórios</button>
+        <button data-route="usuarios" class="nav-item admin-only"><span>⚿</span> Usuários</button>
+        <button data-route="auditoria" class="nav-item admin-only"><span>◉</span> Auditoria</button>
+        <button data-route="configuracoes" class="nav-item admin-only"><span>⚙</span> Configurações</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span id="sidebar-user"></span>
+        <button id="logout-btn" class="btn ghost full" type="button">Sair</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button id="menu-toggle" class="icon-btn" type="button" aria-label="Abrir menu">☰</button>
+        <div>
+          <h1 id="page-title">Painel</h1>
+          <p id="page-subtitle">Visão geral da operação</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="current-date"></span>
+          <button id="install-btn" class="btn secondary hidden" type="button">Instalar aplicativo</button>
+        </div>
+      </header>
+
+      <section id="content" class="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
