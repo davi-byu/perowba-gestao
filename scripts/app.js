@@ -275,10 +275,17 @@
             </div>
 
             <div class="summary-list">
-              <div class="summary-row"><span>Subtotal</span><strong>${money(cartTotal)}</strong></div>
-              <div class="summary-row"><span>Lucro estimado</span><strong>${money(cartTotal - cartCost)}</strong></div>
-              <div class="summary-row total"><span>Total</span><strong>${money(cartTotal)}</strong></div>
-            </div>
+            <div class="summary-row"><span>Subtotal</span><strong id="summary-subtotal">${money(cartTotal)}</strong></div>
+
+            <div class="summary-row"><span>Desconto</span><strong id="summary-discount">R$ 0,00</strong></div>
+
+            <div class="summary-row"><span>Taxa de entrega</span><strong id="summary-delivery">R$ 0,00</strong></div>
+
+            <div class="summary-row"><span>Lucro estimado</span><strong>${money(cartTotal - cartCost)}</strong></div>
+
+            <div class="summary-row total"><span>Total</span><strong id="summary-total">${money(cartTotal)}</strong></div>
+
+          </div>
 
             <div class="form-grid one-column">
               <label>Cliente
@@ -294,6 +301,9 @@
               </label>
               <label>Desconto (R$)
                 <input id="sale-discount" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Taxa de entrega (R$)
+              <input id="sale-delivery" type="number" min="0" step="0.01" value="0">
               </label>
               <button id="finish-sale" class="btn primary full" type="button">Finalizar venda</button>
             </div>
@@ -319,6 +329,41 @@
     });
 
     $("#finish-sale").addEventListener("click", finishSale);
+    const updateSummary = () => {
+
+  const subtotal = cartTotal;
+
+  const discount = Number(
+    $("#sale-discount")?.value || 0
+  );
+
+  const delivery = Number(
+    $("#sale-delivery")?.value || 0
+  );
+
+  const total = subtotal - discount + delivery;
+
+  $("#summary-discount").textContent =
+    money(discount);
+
+  $("#summary-delivery").textContent =
+    money(delivery);
+
+  $("#summary-total").textContent =
+    money(total);
+};
+
+$("#sale-discount").addEventListener(
+  "input",
+  updateSummary
+);
+
+$("#sale-delivery").addEventListener(
+  "input",
+  updateSummary
+);
+
+updateSummary();
   }
 
   function productTiles(products) {
@@ -380,6 +425,8 @@
   function finishSale() {
     if (!state.cart.length) return toast("Adicione pelo menos um produto.");
     const discount = Math.max(0, Number($("#sale-discount").value || 0));
+    const deliveryFee = Math.max(0,
+    Number($("#sale-delivery").value || 0));
     const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
     if (discount > subtotal) return toast("O desconto não pode ser maior que o valor da venda.");
 
@@ -390,7 +437,7 @@
     }
 
     const customer = state.customers.find(c => c.id === $("#sale-customer").value);
-    const total = subtotal - discount;
+    const total = subtotal - discount + deliveryFee;
     const cost = state.cart.reduce((sum, item) => sum + item.cost * item.qty, 0);
     const sale = {
       id: uid("ven"),
@@ -398,6 +445,7 @@
       items: structuredClone(state.cart),
       subtotal,
       discount,
+      deliveryFee,
       total,
       cost,
       profit: total - cost,
@@ -1021,9 +1069,21 @@
     apply();
     $("#apply-report").addEventListener("click", apply);
     $("#export-sales").addEventListener("click", () => exportCSV("vendas.csv", [
-      ["Numero","Data","Cliente","Vendedor","Pagamento","Subtotal","Desconto","Total","Lucro","Status"],
-      ...state.sales.map(s => [s.number,s.createdAt,s.customerName,s.sellerName,s.payment,s.subtotal,s.discount,s.total,s.profit,s.status])
-    ]));
+  ["Numero","Data","Cliente","Vendedor","Pagamento","Subtotal","Desconto","Entrega","Total","Lucro","Status"],
+  ...state.sales.map(s => [
+    s.number,
+    s.createdAt,
+    s.customerName,
+    s.sellerName,
+    s.payment,
+    s.subtotal,
+    s.discount,
+    s.deliveryFee || 0,
+    s.total,
+    s.profit,
+    s.status
+  ])
+]));
     $("#export-stock").addEventListener("click", () => exportCSV("estoque.csv", [
       ["SKU","Produto","Categoria","Custo","Preco","Estoque","Minimo","Status"],
       ...state.products.map(p => [p.sku,p.name,p.category,p.cost,p.price,p.stock,p.minStock,p.active ? "ativo" : "inativo"])
