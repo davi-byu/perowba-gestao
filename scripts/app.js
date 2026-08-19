@@ -51,6 +51,36 @@
   let currentRoute = "dashboard";
   let deferredInstallPrompt = null;
 
+  const cloudEnabled = () => Boolean(window.firebaseService?.enabled);
+
+  async function refreshCloudState() {
+    if (!cloudEnabled()) return;
+    const cart = state.cart || [];
+    const fresh = await window.firebaseService.refreshState();
+    state = { ...initialState(), ...fresh, cart };
+  }
+
+
+  const routeRoles = {
+    dashboard: ["admin", "gerente", "vendedor", "estoquista", "financeiro"],
+    pdv: ["admin", "gerente", "vendedor"],
+    produtos: ["admin", "gerente", "vendedor", "estoquista"],
+    estoque: ["admin", "gerente", "estoquista"],
+    clientes: ["admin", "gerente", "vendedor"],
+    fornecedores: ["admin", "gerente", "estoquista"],
+    compras: ["admin", "gerente", "estoquista"],
+    caixa: ["admin", "gerente", "vendedor", "financeiro"],
+    financeiro: ["admin", "gerente", "financeiro"],
+    relatorios: ["admin", "gerente", "vendedor", "estoquista", "financeiro"],
+    usuarios: ["admin"],
+    auditoria: ["admin"],
+    configuracoes: ["admin"]
+  };
+
+  function canAccessRoute(route) {
+    return Boolean(currentUser && routeRoles[route]?.includes(currentUser.role));
+  }
+
   const routes = {
     dashboard: ["Painel", "Visão geral da operação"],
     pdv: ["PDV / Vendas", "Registre vendas e dê baixa automática no estoque"],
@@ -78,6 +108,10 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (cloudEnabled() && currentUser) {
+      return window.firebaseService.syncState(state, currentUser);
+    }
+    return Promise.resolve();
   }
 
   function getSessionUser() {
@@ -116,6 +150,10 @@
     return ["admin", "gerente"].includes(currentUser?.role);
   }
 
+  function canManageStock() {
+    return ["admin", "gerente", "estoquista"].includes(currentUser?.role);
+  }
+
   function stockStatus(product) {
     if (Number(product.stock) <= 0) return '<span class="badge danger">Sem estoque</span>';
     if (Number(product.stock) <= Number(product.minStock)) return '<span class="badge warning">Estoque baixo</span>';
@@ -132,7 +170,7 @@
 
   function setRoute(route) {
     if (!routes[route]) return;
-    if (!isAdmin() && ["usuarios", "auditoria", "configuracoes"].includes(route)) {
+    if (!canAccessRoute(route)) {
       toast("Seu perfil não possui permissão para acessar este módulo.");
       return;
     }
@@ -169,8 +207,8 @@
     $("#brand-company").textContent = state.settings.companyName;
     $("#sidebar-user").textContent = `${currentUser.name} • ${currentUser.role}`;
     $("#current-date").textContent = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-    $$(".admin-only").forEach(el => el.classList.toggle("hidden", !isAdmin()));
-    setRoute("dashboard");
+    $$(".nav-item").forEach(el => el.classList.toggle("hidden", !canAccessRoute(el.dataset.route)));
+    setRoute(canAccessRoute(currentRoute) ? currentRoute : "dashboard");
   }
 
   function renderDashboard() {
@@ -275,17 +313,10 @@
             </div>
 
             <div class="summary-list">
-            <div class="summary-row"><span>Subtotal</span><strong id="summary-subtotal">${money(cartTotal)}</strong></div>
-
-            <div class="summary-row"><span>Desconto</span><strong id="summary-discount">R$ 0,00</strong></div>
-
-            <div class="summary-row"><span>Taxa de entrega</span><strong id="summary-delivery">R$ 0,00</strong></div>
-
-            <div class="summary-row"><span>Lucro estimado</span><strong>${money(cartTotal - cartCost)}</strong></div>
-
-            <div class="summary-row total"><span>Total</span><strong id="summary-total">${money(cartTotal)}</strong></div>
-
-          </div>
+              <div class="summary-row"><span>Subtotal</span><strong>${money(cartTotal)}</strong></div>
+              <div class="summary-row"><span>Lucro estimado</span><strong>${money(cartTotal - cartCost)}</strong></div>
+              <div class="summary-row total"><span>Total</span><strong>${money(cartTotal)}</strong></div>
+            </div>
 
             <div class="form-grid one-column">
               <label>Cliente
@@ -301,9 +332,6 @@
               </label>
               <label>Desconto (R$)
                 <input id="sale-discount" type="number" min="0" step="0.01" value="0">
-              </label>
-              <label>Taxa de entrega (R$)
-              <input id="sale-delivery" type="number" min="0" step="0.01" value="0">
               </label>
               <button id="finish-sale" class="btn primary full" type="button">Finalizar venda</button>
             </div>
@@ -329,7 +357,6 @@
     });
 
     $("#finish-sale").addEventListener("click", finishSale);
-    
   }
 
   function productTiles(products) {
@@ -388,11 +415,10 @@
     }));
   }
 
-  function finishSale() {
+  async function finishSale() {
+    if (cloudEnabled()) return finishSaleCloud();
     if (!state.cart.length) return toast("Adicione pelo menos um produto.");
     const discount = Math.max(0, Number($("#sale-discount").value || 0));
-    const deliveryFee = Math.max(0,
-    Number($("#sale-delivery").value || 0));
     const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
     if (discount > subtotal) return toast("O desconto não pode ser maior que o valor da venda.");
 
@@ -403,7 +429,7 @@
     }
 
     const customer = state.customers.find(c => c.id === $("#sale-customer").value);
-    const total = subtotal - discount + deliveryFee;
+    const total = subtotal - discount;
     const cost = state.cart.reduce((sum, item) => sum + item.cost * item.qty, 0);
     const sale = {
       id: uid("ven"),
@@ -411,7 +437,6 @@
       items: structuredClone(state.cart),
       subtotal,
       discount,
-      deliveryFee,
       total,
       cost,
       profit: total - cost,
@@ -448,6 +473,29 @@
     renderPDV();
   }
 
+  async function finishSaleCloud() {
+    if (!state.cart.length) return toast("Adicione pelo menos um produto.");
+    const discount = Math.max(0, Number($("#sale-discount").value || 0));
+    const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+    if (discount > subtotal) return toast("O desconto não pode ser maior que o valor da venda.");
+
+    try {
+      const result = await window.firebaseService.finalizeSale({
+        items: state.cart.map(item => ({ productId: item.productId, qty: item.qty })),
+        customerId: $("#sale-customer").value || null,
+        payment: $("#sale-payment").value,
+        discount
+      });
+      state.cart = [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      await refreshCloudState();
+      toast(`Venda ${result.number} finalizada com segurança.`);
+      renderPDV();
+    } catch (error) {
+      toast(error.message || "Não foi possível finalizar a venda.");
+    }
+  }
+
   function renderProducts() {
     $("#content").innerHTML = `
       <div class="grid two">
@@ -467,6 +515,7 @@
               <label>Estoque inicial<input id="product-stock" type="number" min="0" step="1" value="0"></label>
               <label>Estoque mínimo<input id="product-min-stock" type="number" min="0" step="1" value="0"></label>
               <label>Localização<input id="product-location"></label>
+              <label>Imagem do produto<input id="product-image" type="file" accept="image/*"></label>
               <label>Status<select id="product-active"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
               <div class="form-actions">
                 <button id="cancel-product-edit" class="btn secondary hidden" type="button">Cancelar</button>
@@ -514,7 +563,7 @@
     return `<table>
       <thead><tr><th>Produto</th><th>SKU</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Estoque</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody>${products.map(p => `<tr>
-        <td><strong>${escapeHTML(p.name)}</strong><br><span class="muted small">${escapeHTML(p.brand || "")}</span></td>
+        <td>${p.imageUrl ? `<img src="${escapeHTML(p.imageUrl)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px">` : ""}<strong>${escapeHTML(p.name)}</strong><br><span class="muted small">${escapeHTML(p.brand || "")}</span></td>
         <td>${escapeHTML(p.sku)}</td>
         <td>${escapeHTML(p.category || "—")}</td>
         <td>${money(p.cost)}</td>
@@ -529,10 +578,11 @@
     </table>`;
   }
 
-  function saveProduct(event) {
+  async function saveProduct(event) {
     event.preventDefault();
     if (!canManage()) return toast("Seu perfil não pode cadastrar ou editar produtos.");
     const id = $("#product-id").value;
+    const targetId = id || uid("prd");
     const payload = {
       name: $("#product-name").value.trim(),
       sku: $("#product-sku").value.trim(),
@@ -550,13 +600,22 @@
     if (!payload.name || !payload.sku) return toast("Nome e SKU são obrigatórios.");
     if (state.products.some(p => p.sku.toLowerCase() === payload.sku.toLowerCase() && p.id !== id)) return toast("Já existe um produto com este SKU.");
 
+    const imageFile = $("#product-image")?.files?.[0];
+    if (imageFile && cloudEnabled()) {
+      try {
+        payload.imageUrl = await window.firebaseService.uploadProductImage(imageFile, targetId);
+      } catch (error) {
+        return toast(error.message || "Não foi possível enviar a imagem.");
+      }
+    }
+
     if (id) {
       const product = state.products.find(p => p.id === id);
       const before = structuredClone(product);
       Object.assign(product, payload, { updatedAt: nowISO() });
       logAudit("ATUALIZAR", "Produto", product.name, before, product);
     } else {
-      const product = { id: uid("prd"), ...payload, createdAt: nowISO(), updatedAt: nowISO() };
+      const product = { id: targetId, ...payload, createdAt: nowISO(), updatedAt: nowISO() };
       state.products.unshift(product);
       if (product.stock > 0) {
         state.stockMovements.unshift({
@@ -567,7 +626,7 @@
       }
       logAudit("CRIAR", "Produto", product.name, null, product);
     }
-    saveState();
+    await saveState();
     toast("Produto salvo com sucesso.");
     renderProducts();
   }
@@ -647,12 +706,30 @@
       </article>
     `;
 
-    $("#stock-form").addEventListener("submit", event => {
+    $("#stock-form").addEventListener("submit", async event => {
       event.preventDefault();
-      if (!canManage()) return toast("Seu perfil não pode realizar ajustes manuais.");
+      if (!canManageStock()) return toast("Seu perfil não pode realizar ajustes manuais.");
       const product = state.products.find(p => p.id === $("#stock-product").value);
       const type = $("#stock-type").value;
       const rawQty = Number($("#stock-quantity").value);
+
+      if (cloudEnabled()) {
+        try {
+          await window.firebaseService.registerStockMovement({
+            productId: product.id,
+            type,
+            quantity: rawQty,
+            reason: $("#stock-reason").value.trim()
+          });
+          await refreshCloudState();
+          toast("Movimentação registrada com segurança.");
+          renderStock();
+        } catch (error) {
+          toast(error.message || "Não foi possível movimentar o estoque.");
+        }
+        return;
+      }
+
       const negativeTypes = ["Ajuste negativo", "Perda", "Produto danificado", "Uso interno"];
       const qty = negativeTypes.includes(type) ? -rawQty : rawQty;
       if (!state.settings.allowNegativeStock && product.stock + qty < 0) return toast("Esta movimentação deixaria o estoque negativo.");
@@ -822,15 +899,35 @@
     });
     $("#purchase-product").dispatchEvent(new Event("change"));
 
-    $("#purchase-form").addEventListener("submit", event => {
+    $("#purchase-form").addEventListener("submit", async event => {
       event.preventDefault();
-      if (!canManage()) return toast("Seu perfil não pode registrar compras.");
+      if (!canManageStock()) return toast("Seu perfil não pode registrar compras.");
       const supplier = state.suppliers.find(s => s.id === $("#purchase-supplier").value);
       const product = state.products.find(p => p.id === $("#purchase-product").value);
       const qty = Number($("#purchase-qty").value);
       const unitCost = Number($("#purchase-cost").value);
       const freight = Number($("#purchase-freight").value || 0);
       const total = qty * unitCost + freight;
+
+      if (cloudEnabled()) {
+        try {
+          await window.firebaseService.receivePurchase({
+            supplierId: supplier.id,
+            productId: product.id,
+            quantity: qty,
+            unitCost,
+            freight,
+            document: $("#purchase-document").value.trim()
+          });
+          await refreshCloudState();
+          toast("Compra recebida e estoque atualizado com segurança.");
+          renderPurchases();
+        } catch (error) {
+          toast(error.message || "Não foi possível registrar a compra.");
+        }
+        return;
+      }
+
       const purchase = {
         id: uid("com"), supplierId: supplier.id, supplierName: supplier.company,
         productId: product.id, productName: product.name, qty, unitCost, freight, total,
@@ -1035,21 +1132,9 @@
     apply();
     $("#apply-report").addEventListener("click", apply);
     $("#export-sales").addEventListener("click", () => exportCSV("vendas.csv", [
-  ["Numero","Data","Cliente","Vendedor","Pagamento","Subtotal","Desconto","Entrega","Total","Lucro","Status"],
-  ...state.sales.map(s => [
-    s.number,
-    s.createdAt,
-    s.customerName,
-    s.sellerName,
-    s.payment,
-    s.subtotal,
-    s.discount,
-    s.deliveryFee || 0,
-    s.total,
-    s.profit,
-    s.status
-  ])
-]));
+      ["Numero","Data","Cliente","Vendedor","Pagamento","Subtotal","Desconto","Total","Lucro","Status"],
+      ...state.sales.map(s => [s.number,s.createdAt,s.customerName,s.sellerName,s.payment,s.subtotal,s.discount,s.total,s.profit,s.status])
+    ]));
     $("#export-stock").addEventListener("click", () => exportCSV("estoque.csv", [
       ["SKU","Produto","Categoria","Custo","Preco","Estoque","Minimo","Status"],
       ...state.products.map(p => [p.sku,p.name,p.category,p.cost,p.price,p.stock,p.minStock,p.active ? "ativo" : "inativo"])
@@ -1073,7 +1158,7 @@
         <article class="card">
           <div class="card-header"><h2>Novo usuário</h2></div>
           <div class="card-body">
-            <div class="warning-box" style="margin-bottom:16px">No protótipo local, a senha fica apenas neste navegador. Em produção, use Firebase Authentication; nunca armazene senhas no Firestore.</div>
+            <div class="warning-box" style="margin-bottom:16px">Com o Firebase ativado, a conta é criada no Authentication por uma Cloud Function. A senha nunca é salva no Firestore.</div>
             <form id="user-form" class="form-grid two-columns">
               <label>Nome<input id="user-name" required></label>
               <label>E-mail<input id="user-email" type="email" required></label>
@@ -1104,10 +1189,28 @@
       </article>
     `;
 
-    $("#user-form").addEventListener("submit", event => {
+    $("#user-form").addEventListener("submit", async event => {
       event.preventDefault();
       const email = $("#user-email").value.trim().toLowerCase();
       if (state.users.some(u => u.email.toLowerCase() === email)) return toast("Já existe usuário com este e-mail.");
+
+      if (cloudEnabled()) {
+        try {
+          await window.firebaseService.createUser({
+            name: $("#user-name").value.trim(),
+            email,
+            password: $("#user-password").value,
+            role: $("#user-role").value
+          });
+          await refreshCloudState();
+          toast("Usuário criado no Firebase Authentication.");
+          renderUsers();
+        } catch (error) {
+          toast(error.message || "Não foi possível criar o usuário.");
+        }
+        return;
+      }
+
       const user = { id: uid("usr"), name: $("#user-name").value.trim(), email, password: $("#user-password").value, role: $("#user-role").value, active: true };
       state.users.push(user);
       logAudit("CRIAR", "Usuário", `${user.name} (${user.role})`, null, { ...user, password: "[oculta]" });
@@ -1116,8 +1219,21 @@
       renderUsers();
     });
 
-    $$("[data-toggle-user]").forEach(btn => btn.addEventListener("click", () => {
+    $$("[data-toggle-user]").forEach(btn => btn.addEventListener("click", async () => {
       const user = state.users.find(u => u.id === btn.dataset.toggleUser);
+
+      if (cloudEnabled()) {
+        try {
+          await window.firebaseService.setUserActive({ uid: user.id, active: !user.active });
+          await refreshCloudState();
+          toast("Status do usuário atualizado.");
+          renderUsers();
+        } catch (error) {
+          toast(error.message || "Não foi possível alterar o usuário.");
+        }
+        return;
+      }
+
       user.active = !user.active;
       logAudit("ATUALIZAR", "Usuário", `${user.name}: ${user.active ? "ativado" : "desativado"}`);
       saveState();
@@ -1217,6 +1333,7 @@
     });
 
     $("#reset-demo").addEventListener("click", () => {
+      if (cloudEnabled()) return toast("A restauração de demonstração fica desativada no modo Firebase.");
       if (!confirm("Restaurar os dados de demonstração? Os dados atuais serão apagados.")) return;
       state = initialState();
       saveState();
@@ -1227,11 +1344,27 @@
     });
   }
 
+  function showLogin() {
+    $("#app-shell").classList.add("hidden");
+    $("#login-screen").classList.remove("hidden");
+  }
+
   function initEvents() {
-    $("#login-form").addEventListener("submit", event => {
+    $("#login-form").addEventListener("submit", async event => {
       event.preventDefault();
+      $("#login-error").textContent = "";
       const email = $("#login-email").value.trim().toLowerCase();
       const password = $("#login-password").value;
+
+      if (cloudEnabled()) {
+        try {
+          await window.firebaseService.signIn(email, password);
+        } catch (error) {
+          $("#login-error").textContent = "Não foi possível entrar. Verifique o e-mail, a senha e o cadastro do usuário.";
+        }
+        return;
+      }
+
       const user = state.users.find(u => u.email.toLowerCase() === email && u.password === password && u.active);
       if (!user) {
         $("#login-error").textContent = "E-mail, senha ou situação do usuário inválidos.";
@@ -1244,13 +1377,28 @@
       showApp();
     });
 
-    $("#logout-btn").addEventListener("click", () => {
+    $("#reset-password-btn").addEventListener("click", async () => {
+      const email = $("#login-email").value.trim().toLowerCase();
+      if (!email) return toast("Informe seu e-mail para recuperar a senha.");
+      if (!cloudEnabled()) return toast("A recuperação de senha está disponível quando o Firebase estiver ativado.");
+      try {
+        await window.firebaseService.resetPassword(email);
+        toast("E-mail de recuperação enviado.");
+      } catch (error) {
+        toast("Não foi possível enviar o e-mail de recuperação.");
+      }
+    });
+
+    $("#logout-btn").addEventListener("click", async () => {
+      if (cloudEnabled()) {
+        await window.firebaseService.signOut();
+        return;
+      }
       logAudit("LOGOUT", "Autenticação", `Logout realizado por ${currentUser.name}`);
       saveState();
       sessionStorage.removeItem(SESSION_KEY);
       currentUser = null;
-      $("#app-shell").classList.add("hidden");
-      $("#login-screen").classList.remove("hidden");
+      showLogin();
     });
 
     $$(".nav-item").forEach(btn => btn.addEventListener("click", () => setRoute(btn.dataset.route)));
@@ -1273,8 +1421,34 @@
 
   async function init() {
     initEvents();
-    currentUser = getSessionUser();
-    if (currentUser) showApp();
+
+    if (cloudEnabled()) {
+      $(".demo-box")?.classList.add("hidden");
+      window.firebaseService.setErrorHandler(error => toast(error.message || "Falha ao salvar no Firebase."));
+      window.firebaseService.onAuth(async firebaseUser => {
+        if (!firebaseUser) {
+          currentUser = null;
+          showLogin();
+          return;
+        }
+
+        try {
+          const profile = await window.firebaseService.loadProfile(firebaseUser.uid);
+          const cloudState = await window.firebaseService.loadCompanyState(profile);
+          const localCart = loadState().cart || [];
+          state = { ...initialState(), ...cloudState, cart: localCart };
+          currentUser = profile;
+          showApp();
+        } catch (error) {
+          $("#login-error").textContent = error.message || "O perfil do usuário não está configurado corretamente.";
+          await window.firebaseService.signOut();
+        }
+      });
+    } else {
+      currentUser = getSessionUser();
+      if (currentUser) showApp();
+    }
+
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       try { await navigator.serviceWorker.register("./sw.js"); } catch {}
     }
