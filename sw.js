@@ -1,5 +1,5 @@
-const CACHE = "perowba-gestao-v1";
-const ASSETS = ["./", "./index.html", "./estilos/app.css", "./scripts/app.js", "./manifest.webmanifest"];
+const CACHE = "perowba-gestao-v2";
+const ASSETS = ["./", "./index.html", "./estilos/app.css", "./scripts/bootstrap.js", "./scripts/firebase-service.js", "./scripts/app.js", "./scripts/firebase-config.js", "./manifest.webmanifest", "./imagens/icon-192.png", "./imagens/icon-512.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
