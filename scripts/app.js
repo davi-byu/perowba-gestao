@@ -329,41 +329,7 @@
     });
 
     $("#finish-sale").addEventListener("click", finishSale);
-    const updateSummary = () => {
-
-  const subtotal = cartTotal;
-
-  const discount = Number(
-    $("#sale-discount")?.value || 0
-  );
-
-  const delivery = Number(
-    $("#sale-delivery")?.value || 0
-  );
-
-  const total = subtotal - discount + delivery;
-
-  $("#summary-discount").textContent =
-    money(discount);
-
-  $("#summary-delivery").textContent =
-    money(delivery);
-
-  $("#summary-total").textContent =
-    money(total);
-};
-
-$("#sale-discount").addEventListener(
-  "input",
-  updateSummary
-);
-
-$("#sale-delivery").addEventListener(
-  "input",
-  updateSummary
-);
-
-updateSummary();
+    
   }
 
   function productTiles(products) {
