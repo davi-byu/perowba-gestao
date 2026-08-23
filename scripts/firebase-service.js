@@ -246,6 +246,10 @@ export class FirebaseService {
     return this.call("finalizarVenda", payload);
   }
 
+  importOldSales(sales) {
+  return this.call("importarVendasAntigas", { sales });
+}
+
   registerStockMovement(payload) {
     return this.call("registrarMovimentacaoEstoque", payload);
   }

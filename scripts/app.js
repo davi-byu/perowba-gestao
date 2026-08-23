@@ -1319,18 +1319,81 @@
     });
 
     $("#import-backup").addEventListener("change", async event => {
-      const file = event.target.files[0];
-      if (!file) return;
-      try {
-        const parsed = JSON.parse(await file.text());
-        state = { ...initialState(), ...parsed };
-        saveState();
-        toast("Backup importado.");
-        renderSettings();
-      } catch {
-        toast("Arquivo de backup inválido.");
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const parsed = JSON.parse(await file.text());
+
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Backup inválido.");
+    }
+
+    if (cloudEnabled()) {
+      const sales = Array.isArray(parsed.sales)
+        ? parsed.sales
+        : [];
+
+      if (!sales.length) {
+        toast("O backup não possui vendas para importar.");
+        event.target.value = "";
+        return;
       }
-    });
+
+      let imported = 0;
+      let skipped = 0;
+
+      for (let i = 0; i < sales.length; i += 400) {
+        const chunk = sales.slice(i, i + 400);
+
+        const result =
+          await window.firebaseService.importOldSales(chunk);
+
+        imported += Number(result?.imported || 0);
+        skipped += Number(result?.skipped || 0);
+      }
+
+      await refreshCloudState();
+
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(state)
+      );
+
+      toast(
+        `Importação concluída: ${imported} venda(s) importada(s), ${skipped} ignorada(s).`
+      );
+
+      renderSettings();
+
+      event.target.value = "";
+      return;
+    }
+
+    state = {
+      ...initialState(),
+      ...parsed
+    };
+
+    await saveState();
+
+    toast("Backup importado.");
+
+    renderSettings();
+
+    event.target.value = "";
+
+  } catch (error) {
+    console.error("Erro ao importar backup:", error);
+
+    toast(
+      error?.message ||
+      "Arquivo de backup inválido."
+    );
+
+    event.target.value = "";
+  }
+});
 
     $("#reset-demo").addEventListener("click", () => {
       if (cloudEnabled()) return toast("A restauração de demonstração fica desativada no modo Firebase.");
