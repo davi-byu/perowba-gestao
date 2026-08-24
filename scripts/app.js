@@ -202,6 +202,7 @@
   }
 
   function showApp() {
+    $("#loading-screen")?.classList.add("hidden");
     $("#login-screen").classList.add("hidden");
     $("#app-shell").classList.remove("hidden");
     $("#brand-company").textContent = state.settings.companyName;
@@ -1408,9 +1409,10 @@
   }
 
   function showLogin() {
-    $("#app-shell").classList.add("hidden");
-    $("#login-screen").classList.remove("hidden");
-  }
+  $("#loading-screen")?.classList.add("hidden");
+  $("#app-shell").classList.add("hidden");
+  $("#login-screen").classList.remove("hidden");
+}
 
   function initEvents() {
     $("#login-form").addEventListener("submit", async event => {
