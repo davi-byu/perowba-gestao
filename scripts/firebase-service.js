@@ -4,7 +4,9 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
 import {
   getFirestore,
@@ -92,8 +94,9 @@ export class FirebaseService {
   }
 
   async signIn(email, password) {
-    return signInWithEmailAndPassword(this.auth, email, password);
-  }
+  await setPersistence(this.auth, browserLocalPersistence);
+  return signInWithEmailAndPassword(this.auth, email, password);
+}
 
   async signOut() {
     return firebaseSignOut(this.auth);
