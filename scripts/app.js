@@ -1503,9 +1503,19 @@
           currentUser = profile;
           showApp();
         } catch (error) {
-          $("#login-error").textContent = error.message || "O perfil do usuário não está configurado corretamente.";
-          await window.firebaseService.signOut();
-        }
+  console.error(
+    "Erro ao restaurar sessão do Firebase:",
+    error
+  );
+
+  currentUser = null;
+
+  $("#login-error").textContent =
+    error?.message ||
+    "Não foi possível carregar os dados da empresa.";
+
+  showLogin();
+}
       });
     } else {
       currentUser = getSessionUser();
