@@ -1485,6 +1485,11 @@
   async function init() {
     initEvents();
 
+      if (cloudEnabled()) {
+    $("#login-screen").classList.add("hidden");
+    $("#app-shell").classList.add("hidden");
+  }
+
     if (cloudEnabled()) {
       $(".demo-box")?.classList.add("hidden");
       window.firebaseService.setErrorHandler(error => toast(error.message || "Falha ao salvar no Firebase."));
